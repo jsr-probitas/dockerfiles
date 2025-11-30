@@ -184,6 +184,176 @@ func TestEchoWithExtensions_ReturnsMessage(t *testing.T) {
 	}
 }
 
+func TestEchoNested_ReturnsNestedStructure(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoNested struct {
+			Value string
+			Child *struct {
+				Value string
+				Child *struct {
+					Value string
+					Child *struct {
+						Value string
+						Child *struct {
+							Value string
+						}
+					}
+				}
+			}
+		}
+	}
+	c.MustPost(`query { echoNested(message: "test", depth: 3) { value child { value child { value child { value } } } } }`, &resp)
+
+	if resp.EchoNested.Value != "test (level 1)" {
+		t.Errorf("expected 'test (level 1)', got %q", resp.EchoNested.Value)
+	}
+	if resp.EchoNested.Child == nil {
+		t.Fatal("expected child at level 2")
+	}
+	if resp.EchoNested.Child.Value != "test (level 2)" {
+		t.Errorf("expected 'test (level 2)', got %q", resp.EchoNested.Child.Value)
+	}
+	if resp.EchoNested.Child.Child == nil {
+		t.Fatal("expected child at level 3")
+	}
+	if resp.EchoNested.Child.Child.Value != "test (level 3)" {
+		t.Errorf("expected 'test (level 3)', got %q", resp.EchoNested.Child.Child.Value)
+	}
+	if resp.EchoNested.Child.Child.Child != nil {
+		t.Error("expected no child beyond depth 3")
+	}
+}
+
+func TestEchoNested_DepthOne(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoNested struct {
+			Value string
+			Child *struct {
+				Value string
+			}
+		}
+	}
+	c.MustPost(`query { echoNested(message: "single", depth: 1) { value child { value } } }`, &resp)
+
+	if resp.EchoNested.Value != "single (level 1)" {
+		t.Errorf("expected 'single (level 1)', got %q", resp.EchoNested.Value)
+	}
+	if resp.EchoNested.Child != nil {
+		t.Error("expected no child for depth 1")
+	}
+}
+
+func TestEchoList_ReturnsCorrectCount(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoList []struct {
+			Index   int
+			Message string
+		}
+	}
+	c.MustPost(`query { echoList(message: "item", count: 5) { index message } }`, &resp)
+
+	if len(resp.EchoList) != 5 {
+		t.Fatalf("expected 5 items, got %d", len(resp.EchoList))
+	}
+
+	for i, item := range resp.EchoList {
+		if item.Index != i {
+			t.Errorf("expected index %d, got %d", i, item.Index)
+		}
+		if item.Message != "item" {
+			t.Errorf("expected message 'item', got %q", item.Message)
+		}
+	}
+}
+
+func TestEchoList_EmptyList(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoList []struct {
+			Index   int
+			Message string
+		}
+	}
+	c.MustPost(`query { echoList(message: "item", count: 0) { index message } }`, &resp)
+
+	if len(resp.EchoList) != 0 {
+		t.Errorf("expected 0 items, got %d", len(resp.EchoList))
+	}
+}
+
+func TestEchoNull_ReturnsNull(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoNull *string
+	}
+	c.MustPost(`query { echoNull }`, &resp)
+
+	if resp.EchoNull != nil {
+		t.Errorf("expected null, got %q", *resp.EchoNull)
+	}
+}
+
+func TestEchoOptional_ReturnsValueWhenNotNull(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoOptional *string
+	}
+	c.MustPost(`query { echoOptional(message: "hello", returnNull: false) }`, &resp)
+
+	if resp.EchoOptional == nil {
+		t.Fatal("expected non-null value")
+	}
+	if *resp.EchoOptional != "hello" {
+		t.Errorf("expected 'hello', got %q", *resp.EchoOptional)
+	}
+}
+
+func TestEchoOptional_ReturnsNullWhenRequested(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoOptional *string
+	}
+	c.MustPost(`query { echoOptional(message: "hello", returnNull: true) }`, &resp)
+
+	if resp.EchoOptional != nil {
+		t.Errorf("expected null, got %q", *resp.EchoOptional)
+	}
+}
+
+func TestEchoHeaders_ReturnsEmptyWhenNoRequest(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		EchoHeaders struct {
+			Authorization *string
+			ContentType   *string
+			All           []struct {
+				Name  string
+				Value string
+			}
+		}
+	}
+	c.MustPost(`query { echoHeaders { authorization contentType all { name value } } }`, &resp)
+
+	// Without the middleware, request is nil, so headers are empty
+	if resp.EchoHeaders.Authorization != nil {
+		t.Errorf("expected authorization to be nil without request context")
+	}
+	if len(resp.EchoHeaders.All) != 0 {
+		t.Errorf("expected empty all headers without request context")
+	}
+}
+
 // Mutation Tests
 
 func TestCreateMessage_CreatesAndReturnsMessage(t *testing.T) {
@@ -291,6 +461,52 @@ func TestDeleteMessage_ReturnsFalseForNonExistentID(t *testing.T) {
 	}
 }
 
+func TestBatchCreateMessages_CreatesMultipleMessages(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		BatchCreateMessages []struct {
+			ID        string
+			Text      string
+			CreatedAt string
+		}
+	}
+	c.MustPost(`mutation { batchCreateMessages(texts: ["first", "second", "third"]) { id text createdAt } }`, &resp)
+
+	if len(resp.BatchCreateMessages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(resp.BatchCreateMessages))
+	}
+
+	expectedTexts := []string{"first", "second", "third"}
+	for i, msg := range resp.BatchCreateMessages {
+		if msg.ID == "" {
+			t.Errorf("expected non-empty ID at index %d", i)
+		}
+		if msg.Text != expectedTexts[i] {
+			t.Errorf("expected text %q at index %d, got %q", expectedTexts[i], i, msg.Text)
+		}
+		if msg.CreatedAt == "" {
+			t.Errorf("expected non-empty createdAt at index %d", i)
+		}
+	}
+}
+
+func TestBatchCreateMessages_EmptyList(t *testing.T) {
+	c := setupTestClient(t)
+
+	var resp struct {
+		BatchCreateMessages []struct {
+			ID   string
+			Text string
+		}
+	}
+	c.MustPost(`mutation { batchCreateMessages(texts: []) { id text } }`, &resp)
+
+	if len(resp.BatchCreateMessages) != 0 {
+		t.Errorf("expected 0 messages, got %d", len(resp.BatchCreateMessages))
+	}
+}
+
 // Subscription Tests
 
 func TestCountdown_EmitsCorrectSequence(t *testing.T) {
@@ -322,5 +538,122 @@ func TestCountdown_EmitsCorrectSequence(t *testing.T) {
 		if received[i] != exp {
 			t.Errorf("at index %d: expected %d, got %d", i, exp, received[i])
 		}
+	}
+}
+
+func TestHeartbeat_EmitsTimestamps(t *testing.T) {
+	resolver := setupTestResolver(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	subResolver := resolver.Subscription()
+	ch, err := subResolver.Heartbeat(ctx, 50) // 50ms interval
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	count := 0
+	for range ch {
+		count++
+		if count >= 3 {
+			break
+		}
+	}
+
+	if count < 3 {
+		t.Errorf("expected at least 3 heartbeats, got %d", count)
+	}
+}
+
+func TestMessageCreatedFiltered_ReceivesMatchingMessages(t *testing.T) {
+	resolver := setupTestResolver(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	filter := "important"
+	subResolver := resolver.Subscription()
+	ch, err := subResolver.MessageCreatedFiltered(ctx, &filter)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Create messages in a goroutine
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		mutResolver := resolver.Mutation()
+		_, _ = mutResolver.CreateMessage(ctx, "not matching")
+		_, _ = mutResolver.CreateMessage(ctx, "important message")
+		_, _ = mutResolver.CreateMessage(ctx, "another not matching")
+		_, _ = mutResolver.CreateMessage(ctx, "very important")
+	}()
+
+	received := []*string{}
+	timeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				goto done
+			}
+			received = append(received, &msg.Text)
+			if len(received) >= 2 {
+				goto done
+			}
+		case <-timeout:
+			goto done
+		}
+	}
+done:
+
+	if len(received) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(received))
+	}
+	if *received[0] != "important message" {
+		t.Errorf("expected 'important message', got %q", *received[0])
+	}
+	if *received[1] != "very important" {
+		t.Errorf("expected 'very important', got %q", *received[1])
+	}
+}
+
+func TestMessageCreatedFiltered_NoFilter_ReceivesAll(t *testing.T) {
+	resolver := setupTestResolver(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	subResolver := resolver.Subscription()
+	ch, err := subResolver.MessageCreatedFiltered(ctx, nil) // nil filter = receive all
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Create messages
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		mutResolver := resolver.Mutation()
+		_, _ = mutResolver.CreateMessage(ctx, "first")
+		_, _ = mutResolver.CreateMessage(ctx, "second")
+	}()
+
+	received := []string{}
+	timeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				goto done
+			}
+			received = append(received, msg.Text)
+			if len(received) >= 2 {
+				goto done
+			}
+		case <-timeout:
+			goto done
+		}
+	}
+done:
+
+	if len(received) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(received))
 	}
 }

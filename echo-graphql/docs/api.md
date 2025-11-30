@@ -42,6 +42,61 @@ type EchoResult {
 | `message` | String | Echoed message (null on error)  |
 | `error`   | String | Error message (null on success) |
 
+#### Headers
+
+```graphql
+type Headers {
+  authorization: String
+  contentType: String
+  custom(name: String!): String
+  all: [HeaderEntry!]!
+}
+```
+
+| Field           | Type           | Description                    |
+| --------------- | -------------- | ------------------------------ |
+| `authorization` | String         | Authorization header value     |
+| `contentType`   | String         | Content-Type header value      |
+| `custom`        | String         | Custom header by name          |
+| `all`           | [HeaderEntry!] | All headers as key-value pairs |
+
+#### HeaderEntry
+
+```graphql
+type HeaderEntry {
+  name: String!
+  value: String!
+}
+```
+
+#### NestedEcho
+
+```graphql
+type NestedEcho {
+  value: String!
+  child: NestedEcho
+}
+```
+
+| Field   | Type       | Description                       |
+| ------- | ---------- | --------------------------------- |
+| `value` | String!    | The value at this level           |
+| `child` | NestedEcho | Child node (null if at max depth) |
+
+#### EchoListItem
+
+```graphql
+type EchoListItem {
+  index: Int!
+  message: String!
+}
+```
+
+| Field     | Type    | Description         |
+| --------- | ------- | ------------------- |
+| `index`   | Int!    | Zero-based index    |
+| `message` | String! | The message content |
+
 ## Queries
 
 ### echo
@@ -166,8 +221,174 @@ query {
     "echoWithExtensions": "hello"
   },
   "extensions": {
-    "timestamp": "2024-01-01T00:00:00Z",
-    "requestId": "abc123"
+    "timing": {
+      "startTime": "2024-01-01T00:00:00.000000000Z",
+      "duration": "0ms"
+    },
+    "tracing": {
+      "version": 1,
+      "requestId": "req-1234567890"
+    }
+  }
+}
+```
+
+### echoHeaders
+
+Return request headers for auth verification testing.
+
+```graphql
+query {
+  echoHeaders {
+    authorization
+    contentType
+    custom(name: "X-Custom-Header")
+    all { name value }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "echoHeaders": {
+      "authorization": "Bearer token123",
+      "contentType": "application/json",
+      "custom": "custom-value",
+      "all": [
+        { "name": "Authorization", "value": "Bearer token123" },
+        { "name": "Content-Type", "value": "application/json" }
+      ]
+    }
+  }
+}
+```
+
+**curl:**
+
+```bash
+curl -X POST http://localhost:8080/graphql \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer token123" \
+  -d '{"query": "{ echoHeaders { authorization contentType all { name value } } }"}'
+```
+
+### echoNested
+
+Return deeply nested object for recursive response parsing tests.
+
+| Argument  | Type    | Description          |
+| --------- | ------- | -------------------- |
+| `message` | String! | Message to include   |
+| `depth`   | Int!    | Nesting depth (>= 1) |
+
+```graphql
+query {
+  echoNested(message: "test", depth: 3) {
+    value
+    child {
+      value
+      child {
+        value
+      }
+    }
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "echoNested": {
+      "value": "test (level 1)",
+      "child": {
+        "value": "test (level 2)",
+        "child": {
+          "value": "test (level 3)"
+        }
+      }
+    }
+  }
+}
+```
+
+### echoList
+
+Return list of n items for pagination/list handling tests.
+
+| Argument  | Type    | Description           |
+| --------- | ------- | --------------------- |
+| `message` | String! | Message for each item |
+| `count`   | Int!    | Number of items       |
+
+```graphql
+query {
+  echoList(message: "item", count: 3) {
+    index
+    message
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "echoList": [
+      { "index": 0, "message": "item" },
+      { "index": 1, "message": "item" },
+      { "index": 2, "message": "item" }
+    ]
+  }
+}
+```
+
+### echoNull
+
+Always returns null for null handling tests.
+
+```graphql
+query {
+  echoNull
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "echoNull": null
+  }
+}
+```
+
+### echoOptional
+
+Returns value or null based on flag for optional value tests.
+
+| Argument     | Type     | Description           |
+| ------------ | -------- | --------------------- |
+| `message`    | String!  | Message to return     |
+| `returnNull` | Boolean! | If true, returns null |
+
+```graphql
+query {
+  echoOptional(message: "hello", returnNull: false)
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "echoOptional": "hello"
   }
 }
 ```
@@ -258,6 +479,38 @@ mutation {
 }
 ```
 
+### batchCreateMessages
+
+Create multiple messages at once for batch operation testing.
+
+| Argument | Type       | Description           |
+| -------- | ---------- | --------------------- |
+| `texts`  | [String!]! | List of message texts |
+
+```graphql
+mutation {
+  batchCreateMessages(texts: ["first", "second", "third"]) {
+    id
+    text
+    createdAt
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "data": {
+    "batchCreateMessages": [
+      { "id": "1", "text": "first", "createdAt": "2024-01-01T00:00:00Z" },
+      { "id": "2", "text": "second", "createdAt": "2024-01-01T00:00:00Z" },
+      { "id": "3", "text": "third", "createdAt": "2024-01-01T00:00:00Z" }
+    ]
+  }
+}
+```
+
 ## Subscriptions
 
 Subscriptions use WebSocket protocol. Connect to `ws://localhost:8080/graphql`.
@@ -302,6 +555,48 @@ subscription {
 {"data": {"countdown": 2}}
 {"data": {"countdown": 1}}
 {"data": {"countdown": 0}}
+```
+
+### messageCreatedFiltered
+
+Subscribe to messages with optional text filter.
+
+| Argument       | Type   | Description                          |
+| -------------- | ------ | ------------------------------------ |
+| `textContains` | String | Filter messages containing this text |
+
+```graphql
+subscription {
+  messageCreatedFiltered(textContains: "important") {
+    id
+    text
+    createdAt
+  }
+}
+```
+
+Only messages containing "important" in their text will be received.
+
+### heartbeat
+
+Periodic heartbeat for connection testing. Sends ISO 8601 timestamps at the specified interval.
+
+| Argument     | Type | Description              |
+| ------------ | ---- | ------------------------ |
+| `intervalMs` | Int! | Interval in milliseconds |
+
+```graphql
+subscription {
+  heartbeat(intervalMs: 1000)
+}
+```
+
+**Response stream:**
+
+```json
+{"data": {"heartbeat": "2024-01-01T00:00:00.000000000Z"}}
+{"data": {"heartbeat": "2024-01-01T00:00:01.000000000Z"}}
+{"data": {"heartbeat": "2024-01-01T00:00:02.000000000Z"}}
 ```
 
 ## Introspection

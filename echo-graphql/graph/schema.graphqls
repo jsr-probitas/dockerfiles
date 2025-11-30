@@ -13,6 +13,21 @@ type Query {
 
   """Returns data with custom extensions"""
   echoWithExtensions(message: String!): String!
+
+  """Return request headers for auth verification testing"""
+  echoHeaders: Headers!
+
+  """Return deeply nested object for recursive response parsing tests"""
+  echoNested(message: String!, depth: Int!): NestedEcho!
+
+  """Return list of n items for pagination/list handling tests"""
+  echoList(message: String!, count: Int!): [EchoListItem!]!
+
+  """Always returns null for null handling tests"""
+  echoNull: String
+
+  """Returns value or null based on flag for optional value tests"""
+  echoOptional(message: String!, returnNull: Boolean!): String
 }
 
 type Mutation {
@@ -24,6 +39,9 @@ type Mutation {
 
   """Delete a message (returns true if existed)"""
   deleteMessage(id: ID!): Boolean!
+
+  """Create multiple messages at once for batch operation testing"""
+  batchCreateMessages(texts: [String!]!): [Message!]!
 }
 
 type Subscription {
@@ -32,6 +50,12 @@ type Subscription {
 
   """Subscribe to countdown (for streaming tests)"""
   countdown(from: Int!): Int!
+
+  """Subscribe to messages with text filter"""
+  messageCreatedFiltered(textContains: String): Message!
+
+  """Periodic heartbeat for connection testing"""
+  heartbeat(intervalMs: Int!): String!
 }
 
 type Message {
@@ -43,4 +67,38 @@ type Message {
 type EchoResult {
   message: String
   error: String
+}
+
+"""Request headers information for auth verification testing"""
+type Headers {
+  """Authorization header value"""
+  authorization: String
+  """Content-Type header value"""
+  contentType: String
+  """Get a custom header by name"""
+  custom(name: String!): String
+  """All headers as key-value pairs"""
+  all: [HeaderEntry!]!
+}
+
+"""A single header entry"""
+type HeaderEntry {
+  name: String!
+  value: String!
+}
+
+"""Nested echo response for recursive parsing tests"""
+type NestedEcho {
+  """The value at this level"""
+  value: String!
+  """Child node (null if at max depth)"""
+  child: NestedEcho
+}
+
+"""List item for pagination/list tests"""
+type EchoListItem {
+  """Zero-based index of the item"""
+  index: Int!
+  """The message content"""
+  message: String!
 }

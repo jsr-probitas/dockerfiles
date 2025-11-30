@@ -17,6 +17,59 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
+// Authorization returns the Authorization header value
+func (r *headersResolver) Authorization(ctx context.Context, obj *model.Headers) (*string, error) {
+	if obj.Request == nil {
+		return nil, nil
+	}
+	val := obj.Request.Header.Get("Authorization")
+	if val == "" {
+		return nil, nil
+	}
+	return &val, nil
+}
+
+// ContentType returns the Content-Type header value
+func (r *headersResolver) ContentType(ctx context.Context, obj *model.Headers) (*string, error) {
+	if obj.Request == nil {
+		return nil, nil
+	}
+	val := obj.Request.Header.Get("Content-Type")
+	if val == "" {
+		return nil, nil
+	}
+	return &val, nil
+}
+
+// Custom returns a custom header value by name
+func (r *headersResolver) Custom(ctx context.Context, obj *model.Headers, name string) (*string, error) {
+	if obj.Request == nil {
+		return nil, nil
+	}
+	val := obj.Request.Header.Get(name)
+	if val == "" {
+		return nil, nil
+	}
+	return &val, nil
+}
+
+// All returns all request headers as key-value pairs
+func (r *headersResolver) All(ctx context.Context, obj *model.Headers) ([]*model.HeaderEntry, error) {
+	if obj.Request == nil {
+		return []*model.HeaderEntry{}, nil
+	}
+	var entries []*model.HeaderEntry
+	for name, values := range obj.Request.Header {
+		for _, value := range values {
+			entries = append(entries, &model.HeaderEntry{
+				Name:  name,
+				Value: value,
+			})
+		}
+	}
+	return entries, nil
+}
+
 // CreateMessage creates a new message
 func (r *mutationResolver) CreateMessage(ctx context.Context, text string) (*model.Message, error) {
 	r.mu.Lock()
@@ -64,6 +117,30 @@ func (r *mutationResolver) DeleteMessage(ctx context.Context, id string) (bool, 
 		delete(r.messages, id)
 	}
 	return ok, nil
+}
+
+// BatchCreateMessages creates multiple messages at once for batch operation testing
+func (r *mutationResolver) BatchCreateMessages(ctx context.Context, texts []string) ([]*model.Message, error) {
+	messages := make([]*model.Message, len(texts))
+	r.mu.Lock()
+	for i, text := range texts {
+		id := strconv.Itoa(r.nextID)
+		r.nextID++
+		msg := &model.Message{
+			ID:        id,
+			Text:      text,
+			CreatedAt: time.Now().Format(time.RFC3339),
+		}
+		r.messages[id] = msg
+		messages[i] = msg
+	}
+	r.mu.Unlock()
+
+	// Broadcast all created messages
+	for _, msg := range messages {
+		r.Broadcast(msg)
+	}
+	return messages, nil
 }
 
 // Echo echoes back the input message
@@ -123,6 +200,56 @@ func (r *queryResolver) EchoWithExtensions(ctx context.Context, message string) 
 	return message, nil
 }
 
+// EchoHeaders returns request headers for auth verification testing
+func (r *queryResolver) EchoHeaders(ctx context.Context) (*model.Headers, error) {
+	req := model.GetRequestFromContext(ctx)
+	return &model.Headers{Request: req}, nil
+}
+
+// EchoNested returns a deeply nested object for recursive response parsing tests
+func (r *queryResolver) EchoNested(ctx context.Context, message string, depth int) (*model.NestedEcho, error) {
+	if depth <= 0 {
+		depth = 1
+	}
+	// Build nested structure from deepest to shallowest
+	var current *model.NestedEcho
+	for i := depth; i >= 1; i-- {
+		current = &model.NestedEcho{
+			Value: fmt.Sprintf("%s (level %d)", message, i),
+			Child: current,
+		}
+	}
+	return current, nil
+}
+
+// EchoList returns a list of n items for pagination/list handling tests
+func (r *queryResolver) EchoList(ctx context.Context, message string, count int) ([]*model.EchoListItem, error) {
+	if count < 0 {
+		count = 0
+	}
+	items := make([]*model.EchoListItem, count)
+	for i := 0; i < count; i++ {
+		items[i] = &model.EchoListItem{
+			Index:   i,
+			Message: message,
+		}
+	}
+	return items, nil
+}
+
+// EchoNull always returns null for null handling tests
+func (r *queryResolver) EchoNull(ctx context.Context) (*string, error) {
+	return nil, nil
+}
+
+// EchoOptional returns value or null based on flag for optional value tests
+func (r *queryResolver) EchoOptional(ctx context.Context, message string, returnNull bool) (*string, error) {
+	if returnNull {
+		return nil, nil
+	}
+	return &message, nil
+}
+
 // MessageCreated subscribes to message creation events
 func (r *subscriptionResolver) MessageCreated(ctx context.Context) (<-chan *model.Message, error) {
 	ch := r.Subscribe()
@@ -156,12 +283,56 @@ func (r *subscriptionResolver) Countdown(ctx context.Context, from int) (<-chan 
 	return ch, nil
 }
 
+// MessageCreatedFiltered subscribes to messages with optional text filter
+func (r *subscriptionResolver) MessageCreatedFiltered(ctx context.Context, textContains *string) (<-chan *model.Message, error) {
+	ch := r.SubscribeFiltered(textContains)
+
+	go func() {
+		<-ctx.Done()
+		r.UnsubscribeFiltered(ch)
+	}()
+
+	return ch, nil
+}
+
+// Heartbeat sends periodic timestamps for connection testing
+func (r *subscriptionResolver) Heartbeat(ctx context.Context, intervalMs int) (<-chan string, error) {
+	if intervalMs <= 0 {
+		intervalMs = 1000
+	}
+	ch := make(chan string)
+
+	go func() {
+		defer close(ch)
+		ticker := time.NewTicker(time.Duration(intervalMs) * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case t := <-ticker.C:
+				select {
+				case ch <- t.Format(time.RFC3339Nano):
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+func (r *Resolver) Headers() HeadersResolver { return &headersResolver{r} }
+
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
 func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionResolver{r} }
 
+type headersResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }

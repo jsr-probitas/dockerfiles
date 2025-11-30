@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -12,7 +13,16 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/jsr-probitas/dockerfiles/echo-graphql/graph"
+	"github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model"
 )
+
+// requestContextMiddleware injects the http.Request into context for header access
+func requestContextMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), model.RequestKey, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
 
 func main() {
 	cfg := LoadConfig()
@@ -51,8 +61,8 @@ func main() {
 	// GraphQL playground
 	http.Handle("/", playground.Handler("GraphQL Playground", "/graphql"))
 
-	// GraphQL endpoint
-	http.Handle("/graphql", srv)
+	// GraphQL endpoint (with request context middleware for header access)
+	http.Handle("/graphql", requestContextMiddleware(srv))
 
 	log.Printf("Starting server on %s", cfg.Addr())
 	if err := http.ListenAndServe(cfg.Addr(), nil); err != nil {
