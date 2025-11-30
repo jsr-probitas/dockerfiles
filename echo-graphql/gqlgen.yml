@@ -33,3 +33,11 @@ models:
     model: github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model.Message
   EchoResult:
     model: github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model.EchoResult
+  Headers:
+    model: github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model.Headers
+  HeaderEntry:
+    model: github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model.HeaderEntry
+  NestedEcho:
+    model: github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model.NestedEcho
+  EchoListItem:
+    model: github.com/jsr-probitas/dockerfiles/echo-graphql/graph/model.EchoListItem
