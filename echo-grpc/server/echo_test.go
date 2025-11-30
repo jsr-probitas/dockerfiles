@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -279,5 +280,382 @@ func TestBidirectionalStream_EchoesEachMessage(t *testing.T) {
 
 	if err := stream.CloseSend(); err != nil {
 		t.Fatalf("CloseSend failed: %v", err)
+	}
+}
+
+func TestEchoWithTrailers_SetsTrailers(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	var trailer metadata.MD
+	resp, err := client.EchoWithTrailers(context.Background(),
+		&pb.EchoWithTrailersRequest{
+			Message: "hello",
+			Trailers: map[string]string{
+				"x-custom-trailer": "trailer-value",
+				"x-another":        "another-value",
+			},
+		},
+		grpc.Trailer(&trailer),
+	)
+
+	if err != nil {
+		t.Fatalf("EchoWithTrailers failed: %v", err)
+	}
+	if resp.Message != "hello" {
+		t.Errorf("expected message %q, got %q", "hello", resp.Message)
+	}
+
+	// Check trailers were set
+	if vals := trailer.Get("x-custom-trailer"); len(vals) == 0 || vals[0] != "trailer-value" {
+		t.Errorf("expected trailer x-custom-trailer=trailer-value, got %v", vals)
+	}
+	if vals := trailer.Get("x-another"); len(vals) == 0 || vals[0] != "another-value" {
+		t.Errorf("expected trailer x-another=another-value, got %v", vals)
+	}
+}
+
+func TestEchoWithTrailers_NoTrailers(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	resp, err := client.EchoWithTrailers(context.Background(),
+		&pb.EchoWithTrailersRequest{
+			Message: "hello",
+		},
+	)
+
+	if err != nil {
+		t.Fatalf("EchoWithTrailers failed: %v", err)
+	}
+	if resp.Message != "hello" {
+		t.Errorf("expected message %q, got %q", "hello", resp.Message)
+	}
+}
+
+func TestEchoRequestMetadata_ReturnsAllMetadata(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs(
+		"x-auth-token", "bearer-123",
+		"x-request-id", "req-456",
+	))
+
+	resp, err := client.EchoRequestMetadata(ctx, &pb.EchoRequestMetadataRequest{})
+	if err != nil {
+		t.Fatalf("EchoRequestMetadata failed: %v", err)
+	}
+
+	if resp.Metadata["x-auth-token"] == nil || resp.Metadata["x-auth-token"].Values[0] != "bearer-123" {
+		t.Errorf("expected x-auth-token=bearer-123, got %v", resp.Metadata["x-auth-token"])
+	}
+	if resp.Metadata["x-request-id"] == nil || resp.Metadata["x-request-id"].Values[0] != "req-456" {
+		t.Errorf("expected x-request-id=req-456, got %v", resp.Metadata["x-request-id"])
+	}
+}
+
+func TestEchoRequestMetadata_FiltersToSpecificKeys(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs(
+		"x-auth-token", "bearer-123",
+		"x-request-id", "req-456",
+		"x-other", "other-value",
+	))
+
+	resp, err := client.EchoRequestMetadata(ctx, &pb.EchoRequestMetadataRequest{
+		Keys: []string{"x-auth-token"},
+	})
+	if err != nil {
+		t.Fatalf("EchoRequestMetadata failed: %v", err)
+	}
+
+	if resp.Metadata["x-auth-token"] == nil {
+		t.Error("expected x-auth-token to be present")
+	}
+	if resp.Metadata["x-request-id"] != nil {
+		t.Error("expected x-request-id to be absent (filtered)")
+	}
+}
+
+func TestEchoLargePayload_ReturnsCorrectSize(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	tests := []struct {
+		name    string
+		size    int32
+		pattern string
+	}{
+		{"small payload", 100, ""},
+		{"medium payload", 1024, "ABC"},
+		{"custom pattern", 50, "XY"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := client.EchoLargePayload(context.Background(), &pb.EchoLargePayloadRequest{
+				SizeBytes: tt.size,
+				Pattern:   tt.pattern,
+			})
+			if err != nil {
+				t.Fatalf("EchoLargePayload failed: %v", err)
+			}
+
+			if resp.ActualSize != tt.size {
+				t.Errorf("expected size %d, got %d", tt.size, resp.ActualSize)
+			}
+			if len(resp.Payload) != int(tt.size) {
+				t.Errorf("expected payload length %d, got %d", tt.size, len(resp.Payload))
+			}
+		})
+	}
+}
+
+func TestEchoLargePayload_RejectsOversizedRequest(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	_, err := client.EchoLargePayload(context.Background(), &pb.EchoLargePayloadRequest{
+		SizeBytes: MaxPayloadSize + 1,
+	})
+
+	if err == nil {
+		t.Fatal("expected error for oversized request")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", st.Code())
+	}
+}
+
+func TestEchoDeadline_WithDeadline(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := client.EchoDeadline(ctx, &pb.EchoDeadlineRequest{
+		Message: "deadline test",
+	})
+	if err != nil {
+		t.Fatalf("EchoDeadline failed: %v", err)
+	}
+
+	if resp.Message != "deadline test" {
+		t.Errorf("expected message %q, got %q", "deadline test", resp.Message)
+	}
+	if !resp.HasDeadline {
+		t.Error("expected HasDeadline=true")
+	}
+	if resp.DeadlineRemainingMs <= 0 {
+		t.Errorf("expected positive deadline remaining, got %d", resp.DeadlineRemainingMs)
+	}
+}
+
+func TestEchoDeadline_WithoutDeadline(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	resp, err := client.EchoDeadline(context.Background(), &pb.EchoDeadlineRequest{
+		Message: "no deadline",
+	})
+	if err != nil {
+		t.Fatalf("EchoDeadline failed: %v", err)
+	}
+
+	if resp.HasDeadline {
+		t.Error("expected HasDeadline=false")
+	}
+	if resp.DeadlineRemainingMs != -1 {
+		t.Errorf("expected DeadlineRemainingMs=-1, got %d", resp.DeadlineRemainingMs)
+	}
+}
+
+func TestEchoErrorWithDetails_BadRequest(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	_, err := client.EchoErrorWithDetails(context.Background(), &pb.EchoErrorWithDetailsRequest{
+		Code:    int32(codes.InvalidArgument),
+		Message: "validation failed",
+		Details: []*pb.ErrorDetail{
+			{
+				Type: "bad_request",
+				FieldViolations: []*pb.FieldViolation{
+					{Field: "email", Description: "invalid email format"},
+					{Field: "age", Description: "must be positive"},
+				},
+			},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+
+	if st.Code() != codes.InvalidArgument {
+		t.Errorf("expected InvalidArgument, got %v", st.Code())
+	}
+
+	details := st.Details()
+	if len(details) == 0 {
+		t.Fatal("expected error details")
+	}
+
+	br, ok := details[0].(*errdetails.BadRequest)
+	if !ok {
+		t.Fatalf("expected BadRequest detail, got %T", details[0])
+	}
+
+	if len(br.FieldViolations) != 2 {
+		t.Errorf("expected 2 field violations, got %d", len(br.FieldViolations))
+	}
+}
+
+func TestEchoErrorWithDetails_RetryInfo(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	_, err := client.EchoErrorWithDetails(context.Background(), &pb.EchoErrorWithDetailsRequest{
+		Code:    int32(codes.Unavailable),
+		Message: "service unavailable",
+		Details: []*pb.ErrorDetail{
+			{
+				Type:         "retry_info",
+				RetryDelayMs: 5000,
+			},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+
+	details := st.Details()
+	if len(details) == 0 {
+		t.Fatal("expected error details")
+	}
+
+	ri, ok := details[0].(*errdetails.RetryInfo)
+	if !ok {
+		t.Fatalf("expected RetryInfo detail, got %T", details[0])
+	}
+
+	if ri.RetryDelay.Seconds != 5 {
+		t.Errorf("expected 5 second retry delay, got %v", ri.RetryDelay)
+	}
+}
+
+func TestEchoErrorWithDetails_DebugInfo(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	_, err := client.EchoErrorWithDetails(context.Background(), &pb.EchoErrorWithDetailsRequest{
+		Code:    int32(codes.Internal),
+		Message: "internal error",
+		Details: []*pb.ErrorDetail{
+			{
+				Type:         "debug_info",
+				StackEntries: []string{"main.go:42", "handler.go:15"},
+				DebugDetail:  "null pointer exception",
+			},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+
+	if st.Code() != codes.Internal {
+		t.Errorf("expected Internal, got %v", st.Code())
+	}
+
+	details := st.Details()
+	if len(details) == 0 {
+		t.Fatal("expected error details")
+	}
+
+	di, ok := details[0].(*errdetails.DebugInfo)
+	if !ok {
+		t.Fatalf("expected DebugInfo detail, got %T", details[0])
+	}
+
+	if len(di.StackEntries) != 2 {
+		t.Errorf("expected 2 stack entries, got %d", len(di.StackEntries))
+	}
+	if di.Detail != "null pointer exception" {
+		t.Errorf("expected detail %q, got %q", "null pointer exception", di.Detail)
+	}
+}
+
+func TestEchoErrorWithDetails_QuotaFailure(t *testing.T) {
+	client, cleanup := setupTestServer(t)
+	defer cleanup()
+
+	_, err := client.EchoErrorWithDetails(context.Background(), &pb.EchoErrorWithDetailsRequest{
+		Code:    int32(codes.ResourceExhausted),
+		Message: "quota exceeded",
+		Details: []*pb.ErrorDetail{
+			{
+				Type: "quota_failure",
+				QuotaViolations: []*pb.QuotaViolation{
+					{Subject: "user:123", Description: "API calls per minute exceeded"},
+					{Subject: "project:abc", Description: "Storage limit reached"},
+				},
+			},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	st, ok := status.FromError(err)
+	if !ok {
+		t.Fatalf("expected gRPC status error, got %v", err)
+	}
+
+	if st.Code() != codes.ResourceExhausted {
+		t.Errorf("expected ResourceExhausted, got %v", st.Code())
+	}
+
+	details := st.Details()
+	if len(details) == 0 {
+		t.Fatal("expected error details")
+	}
+
+	qf, ok := details[0].(*errdetails.QuotaFailure)
+	if !ok {
+		t.Fatalf("expected QuotaFailure detail, got %T", details[0])
+	}
+
+	if len(qf.Violations) != 2 {
+		t.Errorf("expected 2 quota violations, got %d", len(qf.Violations))
+	}
+	if qf.Violations[0].Subject != "user:123" {
+		t.Errorf("expected subject %q, got %q", "user:123", qf.Violations[0].Subject)
 	}
 }
