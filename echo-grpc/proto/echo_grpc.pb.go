@@ -20,12 +20,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Echo_Echo_FullMethodName                = "/echo.v1.Echo/Echo"
-	Echo_EchoWithDelay_FullMethodName       = "/echo.v1.Echo/EchoWithDelay"
-	Echo_EchoError_FullMethodName           = "/echo.v1.Echo/EchoError"
-	Echo_ServerStream_FullMethodName        = "/echo.v1.Echo/ServerStream"
-	Echo_ClientStream_FullMethodName        = "/echo.v1.Echo/ClientStream"
-	Echo_BidirectionalStream_FullMethodName = "/echo.v1.Echo/BidirectionalStream"
+	Echo_Echo_FullMethodName                 = "/echo.v1.Echo/Echo"
+	Echo_EchoWithDelay_FullMethodName        = "/echo.v1.Echo/EchoWithDelay"
+	Echo_EchoError_FullMethodName            = "/echo.v1.Echo/EchoError"
+	Echo_EchoRequestMetadata_FullMethodName  = "/echo.v1.Echo/EchoRequestMetadata"
+	Echo_EchoWithTrailers_FullMethodName     = "/echo.v1.Echo/EchoWithTrailers"
+	Echo_EchoLargePayload_FullMethodName     = "/echo.v1.Echo/EchoLargePayload"
+	Echo_EchoDeadline_FullMethodName         = "/echo.v1.Echo/EchoDeadline"
+	Echo_EchoErrorWithDetails_FullMethodName = "/echo.v1.Echo/EchoErrorWithDetails"
+	Echo_ServerStream_FullMethodName         = "/echo.v1.Echo/ServerStream"
+	Echo_ClientStream_FullMethodName         = "/echo.v1.Echo/ClientStream"
+	Echo_BidirectionalStream_FullMethodName  = "/echo.v1.Echo/BidirectionalStream"
 )
 
 // EchoClient is the client API for Echo service.
@@ -38,6 +43,15 @@ type EchoClient interface {
 	Echo(ctx context.Context, in *EchoRequest, opts ...grpc.CallOption) (*EchoResponse, error)
 	EchoWithDelay(ctx context.Context, in *EchoWithDelayRequest, opts ...grpc.CallOption) (*EchoResponse, error)
 	EchoError(ctx context.Context, in *EchoErrorRequest, opts ...grpc.CallOption) (*EchoResponse, error)
+	// Metadata/Headers RPCs
+	EchoRequestMetadata(ctx context.Context, in *EchoRequestMetadataRequest, opts ...grpc.CallOption) (*EchoRequestMetadataResponse, error)
+	EchoWithTrailers(ctx context.Context, in *EchoWithTrailersRequest, opts ...grpc.CallOption) (*EchoResponse, error)
+	// Payload Testing RPCs
+	EchoLargePayload(ctx context.Context, in *EchoLargePayloadRequest, opts ...grpc.CallOption) (*EchoLargePayloadResponse, error)
+	// Deadline/Timeout RPCs
+	EchoDeadline(ctx context.Context, in *EchoDeadlineRequest, opts ...grpc.CallOption) (*EchoDeadlineResponse, error)
+	// Error Scenarios RPCs
+	EchoErrorWithDetails(ctx context.Context, in *EchoErrorWithDetailsRequest, opts ...grpc.CallOption) (*EchoResponse, error)
 	// Streaming RPCs
 	ServerStream(ctx context.Context, in *ServerStreamRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[EchoResponse], error)
 	ClientStream(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[EchoRequest, EchoResponse], error)
@@ -76,6 +90,56 @@ func (c *echoClient) EchoError(ctx context.Context, in *EchoErrorRequest, opts .
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EchoResponse)
 	err := c.cc.Invoke(ctx, Echo_EchoError_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *echoClient) EchoRequestMetadata(ctx context.Context, in *EchoRequestMetadataRequest, opts ...grpc.CallOption) (*EchoRequestMetadataResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EchoRequestMetadataResponse)
+	err := c.cc.Invoke(ctx, Echo_EchoRequestMetadata_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *echoClient) EchoWithTrailers(ctx context.Context, in *EchoWithTrailersRequest, opts ...grpc.CallOption) (*EchoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EchoResponse)
+	err := c.cc.Invoke(ctx, Echo_EchoWithTrailers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *echoClient) EchoLargePayload(ctx context.Context, in *EchoLargePayloadRequest, opts ...grpc.CallOption) (*EchoLargePayloadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EchoLargePayloadResponse)
+	err := c.cc.Invoke(ctx, Echo_EchoLargePayload_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *echoClient) EchoDeadline(ctx context.Context, in *EchoDeadlineRequest, opts ...grpc.CallOption) (*EchoDeadlineResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EchoDeadlineResponse)
+	err := c.cc.Invoke(ctx, Echo_EchoDeadline_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *echoClient) EchoErrorWithDetails(ctx context.Context, in *EchoErrorWithDetailsRequest, opts ...grpc.CallOption) (*EchoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EchoResponse)
+	err := c.cc.Invoke(ctx, Echo_EchoErrorWithDetails_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -137,6 +201,15 @@ type EchoServer interface {
 	Echo(context.Context, *EchoRequest) (*EchoResponse, error)
 	EchoWithDelay(context.Context, *EchoWithDelayRequest) (*EchoResponse, error)
 	EchoError(context.Context, *EchoErrorRequest) (*EchoResponse, error)
+	// Metadata/Headers RPCs
+	EchoRequestMetadata(context.Context, *EchoRequestMetadataRequest) (*EchoRequestMetadataResponse, error)
+	EchoWithTrailers(context.Context, *EchoWithTrailersRequest) (*EchoResponse, error)
+	// Payload Testing RPCs
+	EchoLargePayload(context.Context, *EchoLargePayloadRequest) (*EchoLargePayloadResponse, error)
+	// Deadline/Timeout RPCs
+	EchoDeadline(context.Context, *EchoDeadlineRequest) (*EchoDeadlineResponse, error)
+	// Error Scenarios RPCs
+	EchoErrorWithDetails(context.Context, *EchoErrorWithDetailsRequest) (*EchoResponse, error)
 	// Streaming RPCs
 	ServerStream(*ServerStreamRequest, grpc.ServerStreamingServer[EchoResponse]) error
 	ClientStream(grpc.ClientStreamingServer[EchoRequest, EchoResponse]) error
@@ -159,6 +232,21 @@ func (UnimplementedEchoServer) EchoWithDelay(context.Context, *EchoWithDelayRequ
 }
 func (UnimplementedEchoServer) EchoError(context.Context, *EchoErrorRequest) (*EchoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method EchoError not implemented")
+}
+func (UnimplementedEchoServer) EchoRequestMetadata(context.Context, *EchoRequestMetadataRequest) (*EchoRequestMetadataResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EchoRequestMetadata not implemented")
+}
+func (UnimplementedEchoServer) EchoWithTrailers(context.Context, *EchoWithTrailersRequest) (*EchoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EchoWithTrailers not implemented")
+}
+func (UnimplementedEchoServer) EchoLargePayload(context.Context, *EchoLargePayloadRequest) (*EchoLargePayloadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EchoLargePayload not implemented")
+}
+func (UnimplementedEchoServer) EchoDeadline(context.Context, *EchoDeadlineRequest) (*EchoDeadlineResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EchoDeadline not implemented")
+}
+func (UnimplementedEchoServer) EchoErrorWithDetails(context.Context, *EchoErrorWithDetailsRequest) (*EchoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method EchoErrorWithDetails not implemented")
 }
 func (UnimplementedEchoServer) ServerStream(*ServerStreamRequest, grpc.ServerStreamingServer[EchoResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ServerStream not implemented")
@@ -244,6 +332,96 @@ func _Echo_EchoError_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Echo_EchoRequestMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EchoRequestMetadataRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).EchoRequestMetadata(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Echo_EchoRequestMetadata_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).EchoRequestMetadata(ctx, req.(*EchoRequestMetadataRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Echo_EchoWithTrailers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EchoWithTrailersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).EchoWithTrailers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Echo_EchoWithTrailers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).EchoWithTrailers(ctx, req.(*EchoWithTrailersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Echo_EchoLargePayload_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EchoLargePayloadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).EchoLargePayload(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Echo_EchoLargePayload_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).EchoLargePayload(ctx, req.(*EchoLargePayloadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Echo_EchoDeadline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EchoDeadlineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).EchoDeadline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Echo_EchoDeadline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).EchoDeadline(ctx, req.(*EchoDeadlineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Echo_EchoErrorWithDetails_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EchoErrorWithDetailsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(EchoServer).EchoErrorWithDetails(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Echo_EchoErrorWithDetails_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(EchoServer).EchoErrorWithDetails(ctx, req.(*EchoErrorWithDetailsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Echo_ServerStream_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(ServerStreamRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -287,6 +465,26 @@ var Echo_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "EchoError",
 			Handler:    _Echo_EchoError_Handler,
+		},
+		{
+			MethodName: "EchoRequestMetadata",
+			Handler:    _Echo_EchoRequestMetadata_Handler,
+		},
+		{
+			MethodName: "EchoWithTrailers",
+			Handler:    _Echo_EchoWithTrailers_Handler,
+		},
+		{
+			MethodName: "EchoLargePayload",
+			Handler:    _Echo_EchoLargePayload_Handler,
+		},
+		{
+			MethodName: "EchoDeadline",
+			Handler:    _Echo_EchoDeadline_Handler,
+		},
+		{
+			MethodName: "EchoErrorWithDetails",
+			Handler:    _Echo_EchoErrorWithDetails_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

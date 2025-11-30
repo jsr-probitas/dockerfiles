@@ -7,6 +7,7 @@ import (
 	"net"
 
 	"google.golang.org/grpc"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
 	pb "github.com/jsr-probitas/dockerfiles/echo-grpc/proto"
@@ -26,6 +27,10 @@ func main() {
 	// Register echo service
 	echoServer := server.NewEchoServer()
 	pb.RegisterEchoServer(s, echoServer)
+
+	// Register health service (grpc.health.v1)
+	healthServer := server.NewHealthServer()
+	healthpb.RegisterHealthServer(s, healthServer)
 
 	// Enable server reflection (v1 and v1alpha)
 	reflection.Register(s)
